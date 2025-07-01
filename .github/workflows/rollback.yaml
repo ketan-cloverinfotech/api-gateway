@@ -1,7 +1,23 @@
 # This workflow provides a safe and user-friendly way to roll back to a specific Git tag.
-# It runs in two stages:
-# 1. List Tags: Displays all available tags for you to choose from.
-# 2. Perform Rollback: A manually triggered job where you perform the actual rollback.
+#
+# --- HOW IT WORKS (IMPORTANT!) ---
+# This process requires TWO workflow runs due to GitHub Actions limitations.
+#
+# RUN 1: VIEW THE TAGS
+#   - Run the workflow. The first job will show you a list of all available tags in its summary.
+#   - Copy the EXACT tag name you want to roll back to.
+#
+# RUN 2: PERFORM THE ROLLBACK
+#   - Run the workflow AGAIN.
+#   - Paste the tag you copied into the "Target Tag" input box.
+#   - The second job will now PAUSE and wait for your manual approval before running.
+#
+# --- MANDATORY ONE-TIME SETUP ---
+# For the pause/approval step to work, you MUST configure an "Environment" in your repository:
+#   1. Go to your repo's Settings > Environments > New environment.
+#   2. Name the environment "Rollback" (must match exactly).
+#   3. Add a protection rule: Check "Required reviewers" and add yourself or your team.
+#   4. Save the rule.
 
 name: Tag Rollback Workflow
 
@@ -9,49 +25,48 @@ on:
   workflow_dispatch:
     inputs:
       target_tag:
-        description: 'Enter the exact tag to roll back to (copy from "List Tags" job summary)'
-        required: true
+        description: 'RUN 1: Leave blank. RUN 2: Paste the tag you want to roll back to.'
+        required: false # Not required for the first run
         type: string
 
 jobs:
   # JOB 1: LISTS ALL AVAILABLE TAGS
-  # This job's purpose is purely informational. It fetches all tags and displays them
-  # in the job summary so you can easily see and copy the correct one.
+  # This job's purpose is purely informational. It helps you find the correct tag name.
   list_tags:
-    name: "Step 1: List Available Tags"
+    name: "Step 1: View Available Tags"
     runs-on: ubuntu-latest
     steps:
       - name: "Check out repository code"
         uses: actions/checkout@v4
         with:
-          # Fetch all history for all branches and tags
-          fetch-depth: 0
+          fetch-depth: 0 # Fetches all history to get all tags
 
       - name: "Display available tags in job summary"
         run: |
           echo "## 🏷️ Available Tags for Rollback" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Copy the exact tag you want to roll back to from the list below." >> $GITHUB_STEP_SUMMARY
-          echo "Then, re-run this workflow and paste the tag into the 'target_tag' input field." >> $GITHUB_STEP_SUMMARY
+          echo "### Instructions" >> $GITHUB_STEP_SUMMARY
+          echo "1. **Copy the exact tag** you want to roll back to from the list below." >> $GITHUB_STEP_SUMMARY
+          echo "2. **Re-run this workflow**." >> $GITHUB_STEP_SUMMARY
+          echo "3. **Paste the tag** into the 'Target Tag' input field to start the rollback." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           git tag --sort=-creatordate >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-  # JOB 2: PERFORMS THE ROLLBACK
-  # This job depends on the user providing a tag. It includes a manual approval step
-  # to prevent accidental rollbacks, which is a critical safety feature.
+  # JOB 2: PERFORMS THE ROLLBACK AFTER MANUAL APPROVAL
+  # This job only runs if a target_tag is provided. It will PAUSE for approval.
   perform_rollback:
-    name: "Step 2: Perform Rollback (Requires Manual Approval)"
-    needs: list_tags # This job won't run until list_tags is complete.
-    runs-on: ubuntu-latest
+    name: "Step 2: Manually Approve and Perform Rollback"
+    needs: list_tags # This job runs after list_tags.
+    
+    # This condition ensures this job only attempts to run if you've provided a tag.
+    if: github.event.inputs.target_tag != ''
 
-    # IMPORTANT: This creates a manual approval gate. The job will pause and wait for
-    # a user to click "Approve and run" in the GitHub UI.
-    # You must configure an environment named "Rollback" in your repository settings
-    # under Settings > Environments.
+    # This is the key for pausing the workflow. It requires the "Rollback" environment to be configured.
     environment: Rollback
 
+    runs-on: ubuntu-latest
     steps:
       - name: "Check out repository code"
         uses: actions/checkout@v4
@@ -60,28 +75,22 @@ jobs:
 
       - name: "Verify that the specified tag exists"
         run: |
-          # This step checks if the tag provided in the workflow dispatch input actually exists.
-          # If it doesn't, the workflow will fail with a clear error message.
+          echo "Attempting to roll back to tag: ${{ github.event.inputs.target_tag }}"
           if ! git show-ref --tags "${{ github.event.inputs.target_tag }}"; then
             echo "::error::Tag '${{ github.event.inputs.target_tag }}' does not exist in the repository!"
             exit 1
           fi
-          echo "✅ Tag '${{ github.event.inputs.target_tag }}' found."
+          echo "✅ Tag '${{ github.event.inputs.target_tag }}' found and verified."
 
-      - name: "Confirm selection and prepare for rollback"
-        run: |
-          echo "🚀 You have approved the rollback to tag: ${{ github.event.inputs.target_tag }}"
-          echo "The next step will contain your actual rollback commands."
-          
       - name: "Execute Rollback Commands"
         run: |
-          # --- ADD YOUR ROLLBACK LOGIC HERE ---
+          # --- ADD YOUR ACTUAL ROLLBACK LOGIC HERE ---
           # This is where you would put your commands to perform the rollback.
           # For example, you might check out the tag and then run a deployment script.
+          echo "Executing rollback for tag: ${{ github.event.inputs.target_tag }}"
           #
-          # Example:
+          # EXAMPLE COMMANDS:
           # git checkout ${{ github.event.inputs.target_tag }}
-          # ./scripts/deploy.sh
+          # ./scripts/deploy-to-production.sh --force
           
-          echo "Simulating rollback to ${{ github.event.inputs.target_tag }}..."
-          echo "Rollback complete."
+          echo "✅ Simulation of rollback to ${{ github.event.inputs.target_tag }} is complete."
