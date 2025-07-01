@@ -9,38 +9,47 @@ on:
         options:
           - 'No'
           - 'Yes'
+      target_tag:
+        description: 'MANUALLY ENTER TAG (see available tags below)'
+        required: false
+        type: string
+        default: 'v1'
 
 jobs:
-  get_tags:
-    if: github.event.inputs.rollback_choice == 'Yes'
+  list_tags:
+    if: inputs.rollback_choice == 'Yes'
     runs-on: ubuntu-latest
-    outputs:
-      tag_list: ${{ steps.tag_output.outputs.tag_list }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Get all history for tags
+          fetch-depth: 0
           
-      - name: Get available tags
-        id: tag_output
+      - name: Show available tags
         run: |
-          # Get sorted tags (newest first)
-          echo "Available tags in repository:"
-          git tag --sort=-creatordate | head -n 10
-          
-          # Format tags for output
-          tags=$(git tag --sort=-creatordate | tr '\n' ',' | sed 's/,$//')
-          echo "tag_list=${tags}" >> $GITHUB_OUTPUT
+          echo "AVAILABLE TAGS IN REPOSITORY:"
+          git tag --sort=-creatordate
+          echo "----------------------------"
+          echo "Please copy EXACTLY one tag"
+          echo "and paste it in the target_tag field"
 
-  confirm_selection:
-    needs: get_tags
-    if: github.event.inputs.rollback_choice == 'Yes'
+  perform_rollback:
+    needs: list_tags
+    if: inputs.rollback_choice == 'Yes' && inputs.target_tag != ''
     runs-on: ubuntu-latest
     steps:
-      - name: Display selected tag
-        env:
-          SELECTED_TAG: ${{ github.event.inputs.target_tag }}
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Verify tag exists
         run: |
-          echo "You have selected tag: ${SELECTED_TAG}"
-          echo "Run your rollback commands here:"
-          echo "git checkout ${SELECTED_TAG}"
+          if ! git show-ref --tags "${{ inputs.target_tag }}"; then
+            echo "::error::Tag ${{ inputs.target_tag }} does not exist!"
+            exit 1
+          fi
+
+      - name: Confirm selection
+        run: |
+          echo "SUCCESS: You selected tag '${{ inputs.target_tag }}'"
+          echo "Ready to execute: git checkout ${{ inputs.target_tag }}"
+          echo "Add your rollback commands below this step"
