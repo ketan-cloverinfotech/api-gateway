@@ -1,4 +1,4 @@
-name: Tag Selection
+name: Tag Rollback Confirmation
 on:
   workflow_dispatch:
     inputs:
@@ -10,37 +10,35 @@ on:
           - 'No'
           - 'Yes'
       target_tag:
-        description: 'Select a tag to rollback to'
+        description: 'Select tag to rollback to'
         required: false
-        type: choice
-        options: []
+        type: string
 
 jobs:
-  setup-tags:
+  setup:
     runs-on: ubuntu-latest
-    outputs:
-      tag_list: ${{ steps.get-tags.outputs.tag_list }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Needed to fetch all tags
-      
-      - name: Get all tags
-        id: get-tags
+          fetch-depth: 0  # Get all history for tags
+
+      - name: List available tags
         run: |
-          # Get tags sorted by date (newest first)
-          tags=$(git tag --sort=-creatordate | tr '\n' ',')
-          echo "tags=${tags}" >> $GITHUB_OUTPUT
           echo "Available tags:"
           git tag --sort=-creatordate | head -n 10
 
-  rollback:
-    needs: setup-tags
-    runs-on: ubuntu-latest
+  confirm:
+    needs: setup
     if: inputs.confirm_rollback == 'Yes'
+    runs-on: ubuntu-latest
     steps:
-      - name: Show selected tag
+      - name: Show selection confirmation
         run: |
-          echo "You selected to rollback to: ${{ inputs.target_tag }}"
-          echo "This is where you would add your rollback logic"
-          echo "For example: git checkout ${{ inputs.target_tag }}"
+          echo "You have selected tag: ${{ inputs.target_tag }}"
+          echo "This would perform rollback to ${{ inputs.target_tag }}"
+          echo "Add your actual rollback commands here"
+          
+      - name: Example rollback command
+        run: |
+          echo "git checkout ${{ inputs.target_tag }}"
