@@ -1,55 +1,87 @@
+# This workflow provides a safe and user-friendly way to roll back to a specific Git tag.
+# It runs in two stages:
+# 1. List Tags: Displays all available tags for you to choose from.
+# 2. Perform Rollback: A manually triggered job where you perform the actual rollback.
+
 name: Tag Rollback Workflow
+
 on:
   workflow_dispatch:
     inputs:
-      rollback_choice:
-        description: 'Do you want to rollback?'
-        required: true
-        type: choice
-        options:
-          - 'No'
-          - 'Yes'
       target_tag:
-        description: 'MANUALLY ENTER TAG (see available tags below)'
-        required: false
+        description: 'Enter the exact tag to roll back to (copy from "List Tags" job summary)'
+        required: true
         type: string
-        default: 'v1'
 
 jobs:
+  # JOB 1: LISTS ALL AVAILABLE TAGS
+  # This job's purpose is purely informational. It fetches all tags and displays them
+  # in the job summary so you can easily see and copy the correct one.
   list_tags:
-    if: inputs.rollback_choice == 'Yes'
+    name: "Step 1: List Available Tags"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: "Check out repository code"
+        uses: actions/checkout@v4
         with:
+          # Fetch all history for all branches and tags
           fetch-depth: 0
-          
-      - name: Show available tags
-        run: |
-          echo "AVAILABLE TAGS IN REPOSITORY:"
-          git tag --sort=-creatordate
-          echo "----------------------------"
-          echo "Please copy EXACTLY one tag"
-          echo "and paste it in the target_tag field"
 
+      - name: "Display available tags in job summary"
+        run: |
+          echo "## 🏷️ Available Tags for Rollback" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Copy the exact tag you want to roll back to from the list below." >> $GITHUB_STEP_SUMMARY
+          echo "Then, re-run this workflow and paste the tag into the 'target_tag' input field." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          git tag --sort=-creatordate >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # JOB 2: PERFORMS THE ROLLBACK
+  # This job depends on the user providing a tag. It includes a manual approval step
+  # to prevent accidental rollbacks, which is a critical safety feature.
   perform_rollback:
-    needs: list_tags
-    if: inputs.rollback_choice == 'Yes' && inputs.target_tag != ''
+    name: "Step 2: Perform Rollback (Requires Manual Approval)"
+    needs: list_tags # This job won't run until list_tags is complete.
     runs-on: ubuntu-latest
+
+    # IMPORTANT: This creates a manual approval gate. The job will pause and wait for
+    # a user to click "Approve and run" in the GitHub UI.
+    # You must configure an environment named "Rollback" in your repository settings
+    # under Settings > Environments.
+    environment: Rollback
+
     steps:
-      - uses: actions/checkout@v4
+      - name: "Check out repository code"
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          
-      - name: Verify tag exists
+
+      - name: "Verify that the specified tag exists"
         run: |
-          if ! git show-ref --tags "${{ inputs.target_tag }}"; then
-            echo "::error::Tag ${{ inputs.target_tag }} does not exist!"
+          # This step checks if the tag provided in the workflow dispatch input actually exists.
+          # If it doesn't, the workflow will fail with a clear error message.
+          if ! git show-ref --tags "${{ github.event.inputs.target_tag }}"; then
+            echo "::error::Tag '${{ github.event.inputs.target_tag }}' does not exist in the repository!"
             exit 1
           fi
+          echo "✅ Tag '${{ github.event.inputs.target_tag }}' found."
 
-      - name: Confirm selection
+      - name: "Confirm selection and prepare for rollback"
         run: |
-          echo "SUCCESS: You selected tag '${{ inputs.target_tag }}'"
-          echo "Ready to execute: git checkout ${{ inputs.target_tag }}"
-          echo "Add your rollback commands below this step"
+          echo "🚀 You have approved the rollback to tag: ${{ github.event.inputs.target_tag }}"
+          echo "The next step will contain your actual rollback commands."
+          
+      - name: "Execute Rollback Commands"
+        run: |
+          # --- ADD YOUR ROLLBACK LOGIC HERE ---
+          # This is where you would put your commands to perform the rollback.
+          # For example, you might check out the tag and then run a deployment script.
+          #
+          # Example:
+          # git checkout ${{ github.event.inputs.target_tag }}
+          # ./scripts/deploy.sh
+          
+          echo "Simulating rollback to ${{ github.event.inputs.target_tag }}..."
+          echo "Rollback complete."
