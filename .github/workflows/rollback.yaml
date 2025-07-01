@@ -1,0 +1,51 @@
+name: Rollback to Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      rollback_confirm:
+        description: 'Do you want to ROLLBACK to a specific tag?'
+        required: true
+        type: choice
+        options:
+          - No
+          - Yes
+      tag_name:
+        description: 'Enter the tag name to rollback to (only if selecting Yes above)'
+        required: false
+        type: string
+
+env:
+  BENCH_DIR: "/home/frappe/frappe-bench"
+  SITE: "clover"
+  COMMIT_HASH_DIR: "/home/frappe/git"
+
+jobs:
+  rollback:
+    runs-on: dev  # or use self-hosted runner
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Verify rollback choice
+        if: inputs.rollback_confirm == 'Yes' && !inputs.tag_name
+        run: |
+          echo "Error: You selected Yes for rollback but didn't provide a tag name"
+          exit 1
+
+      - name: List available tags (for reference)
+        if: inputs.rollback_confirm == 'Yes'
+        run: |
+          git fetch --tags
+          git tag -l --sort=-creatordate | head -n 10
+          echo "Most recent 10 tags listed above"
+
+      - name: Perform rollback
+        if: inputs.rollback_confirm == 'Yes' && inputs.tag_name
+        run: |
+          echo "Performing rollback to tag ${{ inputs.tag_name }}"
+          bash /home/frappe/restore.sh "$(basename $(git remote get-url origin) .git)" "${{ inputs.tag_name }}"
+          
+          # Alternative if you just need to checkout the tag
+          # git checkout tags/${{ inputs.tag_name }}
