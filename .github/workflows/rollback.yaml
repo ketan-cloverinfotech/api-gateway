@@ -1,4 +1,4 @@
-name: Tag Rollback Confirmation
+name: Tag Rollback Selection
 on:
   workflow_dispatch:
     inputs:
@@ -12,33 +12,38 @@ on:
       target_tag:
         description: 'Select tag to rollback to'
         required: false
-        type: string
+        type: choice
+        options: >
+          ${{ github.event.inputs.confirm_rollback == 'Yes' && 
+          steps.get_tags.outputs.tag_list || '' }}
 
 jobs:
-  setup:
+  get_tags:
+    if: github.event.inputs.confirm_rollback == 'Yes'
     runs-on: ubuntu-latest
+    outputs:
+      tag_list: ${{ steps.set_tags.outputs.tag_list }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Get all history for tags
-
-      - name: List available tags
+          
+      - name: Get available tags
+        id: set_tags
         run: |
+          # Get sorted tags (newest first)
+          tags=$(git tag --sort=-creatordate | tr '\n' ',' | sed 's/,$//')
+          echo "tag_list=${tags}" >> $GITHUB_OUTPUT
           echo "Available tags:"
           git tag --sort=-creatordate | head -n 10
 
   confirm:
-    needs: setup
+    needs: get_tags
     if: inputs.confirm_rollback == 'Yes'
     runs-on: ubuntu-latest
     steps:
-      - name: Show selection confirmation
+      - name: Show selected tag
         run: |
           echo "You have selected tag: ${{ inputs.target_tag }}"
-          echo "This would perform rollback to ${{ inputs.target_tag }}"
-          echo "Add your actual rollback commands here"
-          
-      - name: Example rollback command
-        run: |
+          echo "Add your rollback commands here:"
           echo "git checkout ${{ inputs.target_tag }}"
