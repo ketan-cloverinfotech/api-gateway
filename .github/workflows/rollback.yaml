@@ -1,49 +1,46 @@
-name: Tag Rollback Selection
+name: Tag Rollback Workflow
 on:
   workflow_dispatch:
     inputs:
-      confirm_rollback:
-        description: 'Do you want to perform a rollback?'
+      rollback_choice:
+        description: 'Do you want to rollback?'
         required: true
         type: choice
         options:
           - 'No'
           - 'Yes'
-      target_tag:
-        description: 'Select tag to rollback to'
-        required: false
-        type: choice
-        options: >
-          ${{ github.event.inputs.confirm_rollback == 'Yes' && 
-          steps.get_tags.outputs.tag_list || '' }}
 
 jobs:
   get_tags:
-    if: github.event.inputs.confirm_rollback == 'Yes'
+    if: github.event.inputs.rollback_choice == 'Yes'
     runs-on: ubuntu-latest
     outputs:
-      tag_list: ${{ steps.set_tags.outputs.tag_list }}
+      tag_list: ${{ steps.tag_output.outputs.tag_list }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Get all history for tags
           
       - name: Get available tags
-        id: set_tags
+        id: tag_output
         run: |
           # Get sorted tags (newest first)
+          echo "Available tags in repository:"
+          git tag --sort=-creatordate | head -n 10
+          
+          # Format tags for output
           tags=$(git tag --sort=-creatordate | tr '\n' ',' | sed 's/,$//')
           echo "tag_list=${tags}" >> $GITHUB_OUTPUT
-          echo "Available tags:"
-          git tag --sort=-creatordate | head -n 10
 
-  confirm:
+  confirm_selection:
     needs: get_tags
-    if: inputs.confirm_rollback == 'Yes'
+    if: github.event.inputs.rollback_choice == 'Yes'
     runs-on: ubuntu-latest
     steps:
-      - name: Show selected tag
+      - name: Display selected tag
+        env:
+          SELECTED_TAG: ${{ github.event.inputs.target_tag }}
         run: |
-          echo "You have selected tag: ${{ inputs.target_tag }}"
-          echo "Add your rollback commands here:"
-          echo "git checkout ${{ inputs.target_tag }}"
+          echo "You have selected tag: ${SELECTED_TAG}"
+          echo "Run your rollback commands here:"
+          echo "git checkout ${SELECTED_TAG}"
